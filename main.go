@@ -11,6 +11,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+// ResultTypeReturn is base cover api
+type ResultTypeReturn struct {
+	BaseResultRegisterMail []BaseResultRegisterMail `json:"result"`
+}
+
 // BaseResultRegisterMail model for base response from api register mail checker
 type BaseResultRegisterMail struct {
 	NotReceived []ResultRegisterMail
@@ -31,8 +36,8 @@ type ResultRegisterMail struct {
 	Dispenser    string
 	Title        string
 	Status       string
-	CreateDate   time.Time
-	ReceivedDate time.Time
+	CreateDate   string
+	ReceivedDate string
 	ProjectCode  string
 	ProjectID    string
 }
@@ -64,13 +69,13 @@ func applicationRunner() {
 }
 
 func getDataFromCheckRegisterMailAPI(config config.Config) BaseResultRegisterMail {
-	var resultObject = new(BaseResultRegisterMail)
+	var resultObject = new(ResultTypeReturn)
 	err := utils.GetJSON(config.CheckRegisterMailAPIUrl, &resultObject)
 	if err != nil {
 		log.Fatal(err)
 		fmt.Println(err.Error())
 	}
-	return *resultObject
+	return resultObject.BaseResultRegisterMail[0]
 }
 
 func findNewRegisterMailService(cachedResultRegisterMail BaseResultRegisterMail, currentResultRegisterMail BaseResultRegisterMail) []ResultRegisterMail {
