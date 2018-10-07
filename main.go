@@ -61,7 +61,7 @@ func applicationRunner(request *http.Request) {
 		log.Fatal(err)
 		fmt.Println(err.Error())
 	}
-	for range time.Tick(5 * time.Second) {
+	for range time.Tick(3600 * time.Second) {
 		registerMailResult := getDataFromCheckRegisterMailAPI(config)
 		if cachedRegisterMailAPI == nil {
 			cachedRegisterMailAPI = &registerMailResult
