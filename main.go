@@ -11,6 +11,18 @@ import (
 	"github.com/spf13/viper"
 )
 
+// LineMessageWebhook base line response with webhook
+type LineMessageWebhook struct {
+	ReplyToken string `json:"replyToken"`
+	Type       string `json:"type"`
+	Timestamp  int    `json:"timestamp"`
+}
+
+// LineWebHookEvent base line webhook event
+type LineWebHookEvent struct {
+	Events []LineMessageWebhook `json:"events"`
+}
+
 // ResultTypeReturn is base cover api
 type ResultTypeReturn struct {
 	BaseResultRegisterMail []BaseResultRegisterMail `json:"result"`
@@ -43,21 +55,25 @@ type ResultRegisterMail struct {
 }
 
 func main() {
-
 	app := iris.Default()
 	app.Post("/webhook", func(ctx iris.Context) {
-		fmt.Println(ctx.Request().Body)
-		applicationRunner()
+		webhook := &LineWebHookEvent{}
+		if err := ctx.ReadJSON(webhook); err != nil {
+			panic(err.Error())
+		} else {
+			fmt.Println(webhook.Events[0].ReplyToken)
+			applicationRunner()
+		}
 	})
 	app.Run(iris.Addr(":8080"))
 }
 
-func applicationRunner() {
+func applicationRunner(replyToken string, userId string) {
+	fmt.Println(replyToken)
 	var cachedRegisterMailAPI *BaseResultRegisterMail
 	config := readAppConfig()
 	for range time.Tick(30 * time.Second) {
 		registerMailResult := getDataFromCheckRegisterMailAPI(config)
-		fmt.Println(len(registerMailResult.Received))
 		if cachedRegisterMailAPI == nil {
 			cachedRegisterMailAPI = &registerMailResult
 		} else {
@@ -83,7 +99,6 @@ func findNewRegisterMailService(cachedResultRegisterMail BaseResultRegisterMail,
 	for _, registerMail := range currentResultRegisterMail.Received {
 		for _, cacheRegisterMail := range cachedResultRegisterMail.Received {
 			if registerMail.ParcelNumber == cacheRegisterMail.ParcelNumber {
-				fmt.Println(registerMail.ParcelNumber)
 				continue
 			}
 		}

@@ -2,7 +2,6 @@ package utils
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -14,7 +13,6 @@ func GetJSON(url string, target interface{}) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(r.Body)
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(target)
 }
