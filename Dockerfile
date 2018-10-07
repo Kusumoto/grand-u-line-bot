@@ -1,4 +1,4 @@
-FROM golang:1.8-onbuild
+FROM golang:1.11-onbuild
 WORKDIR /go/src/github.com/kusumoto/grand-u-line-bot
 ADD ./ .
 RUN go get -u github.com/golang/dep/cmd/dep
