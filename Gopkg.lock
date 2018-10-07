@@ -218,6 +218,25 @@
   version = "v1.1"
 
 [[projects]]
+  branch = "master"
+  digest = "1:0b1e4ce67f4a9b1a16246bf01b9b096d04f8f7cf4be50f04fce06a611392305b"
+  name = "github.com/kusumoto/grand-u-line-notify"
+  packages = [
+    "config",
+    "utils",
+  ]
+  pruneopts = "UT"
+  revision = "3fc9525cbf42872af719bc81cbccb241675d51be"
+
+[[projects]]
+  digest = "1:fc8b9119ac036faaab206f517421116d5cf2eaf35d213f6b5d8e2c74dba6f76c"
+  name = "github.com/line/line-bot-sdk-go"
+  packages = ["linebot"]
+  pruneopts = "UT"
+  revision = "d787aef1744dc11dbde0fac149e6fbbdbe29d3d6"
+  version = "v4.0.0"
+
+[[projects]]
   digest = "1:c568d7727aa262c32bdf8a3f7db83614f7af0ed661474b24588de635c20024c7"
   name = "github.com/magiconair/properties"
   packages = ["."]
@@ -424,6 +443,9 @@
   analyzer-version = 1
   input-imports = [
     "github.com/kataras/iris",
+    "github.com/kusumoto/grand-u-line-notify/config",
+    "github.com/kusumoto/grand-u-line-notify/utils",
+    "github.com/line/line-bot-sdk-go/linebot",
     "github.com/spf13/viper",
   ]
   solver-name = "gps-cdcl"

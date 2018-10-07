@@ -3,25 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/kataras/iris"
 	"github.com/kusumoto/grand-u-line-notify/config"
 	"github.com/kusumoto/grand-u-line-notify/utils"
+	"github.com/line/line-bot-sdk-go/linebot"
 	"github.com/spf13/viper"
 )
-
-// LineMessageWebhook base line response with webhook
-type LineMessageWebhook struct {
-	ReplyToken string `json:"replyToken"`
-	Type       string `json:"type"`
-	Timestamp  int    `json:"timestamp"`
-}
-
-// LineWebHookEvent base line webhook event
-type LineWebHookEvent struct {
-	Events []LineMessageWebhook `json:"events"`
-}
 
 // ResultTypeReturn is base cover api
 type ResultTypeReturn struct {
@@ -57,28 +47,27 @@ type ResultRegisterMail struct {
 func main() {
 	app := iris.Default()
 	app.Post("/webhook", func(ctx iris.Context) {
-		webhook := &LineWebHookEvent{}
-		if err := ctx.ReadJSON(webhook); err != nil {
-			panic(err.Error())
-		} else {
-			fmt.Println(webhook.Events[0].ReplyToken)
-			applicationRunner()
-		}
+		applicationRunner(ctx.Request())
 	})
 	app.Run(iris.Addr(":8080"))
 }
 
-func applicationRunner(replyToken string, userId string) {
-	fmt.Println(replyToken)
+func applicationRunner(request *http.Request) {
 	var cachedRegisterMailAPI *BaseResultRegisterMail
 	config := readAppConfig()
-	for range time.Tick(30 * time.Second) {
+	bot, err := linebot.New(config.LineChannelSecret, config.LineAccessToken)
+	userID := setDataSendToLine(bot, request)
+	if err != nil {
+		log.Fatal(err)
+		fmt.Println(err.Error())
+	}
+	for range time.Tick(5 * time.Second) {
 		registerMailResult := getDataFromCheckRegisterMailAPI(config)
 		if cachedRegisterMailAPI == nil {
 			cachedRegisterMailAPI = &registerMailResult
 		} else {
 			filteredMailResult := findNewRegisterMailService(*cachedRegisterMailAPI, registerMailResult)
-			sendMessageToLine(filteredMailResult)
+			sendMessageToLine(filteredMailResult, bot, userID)
 			cachedRegisterMailAPI = &registerMailResult
 		}
 	}
@@ -94,21 +83,88 @@ func getDataFromCheckRegisterMailAPI(config config.Config) BaseResultRegisterMai
 	return resultObject.BaseResultRegisterMail[0]
 }
 
+func buildFlexMessage(registerMailObject ResultRegisterMail) *linebot.FlexMessage {
+	flexHeaderComponent := []linebot.FlexComponent{}
+	rootFlexBodyComponent := []linebot.FlexComponent{}
+
+	flexHeaderComponent = append(flexHeaderComponent, &linebot.TextComponent{Type: linebot.FlexComponentTypeText, Text: "มีพัสดุใหม่", Size: linebot.FlexTextSizeTypeXl, Weight: linebot.FlexTextWeightTypeBold, Color: "#1DB446"})
+	flexHeaderComponent = append(flexHeaderComponent, &linebot.SeparatorComponent{Type: linebot.FlexComponentTypeSeparator, Margin: linebot.FlexComponentMarginTypeXl})
+
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("รายการพัสดุ", registerMailObject.Title))
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("ส่งถึง", registerMailObject.SentTo))
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("Tracking No.", registerMailObject.TrackNo))
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("ผู้ส่ง", registerMailObject.Sender))
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("ผู้รับพัสดุ", registerMailObject.Recipient))
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("วันที่รับพัสดุเข้า", registerMailObject.ReceivedDate))
+
+	headerBox := &linebot.BoxComponent{
+		Type:     linebot.FlexComponentTypeBox,
+		Layout:   linebot.FlexBoxLayoutTypeVertical,
+		Contents: flexHeaderComponent,
+	}
+	bodyBox := &linebot.BoxComponent{
+		Type:     linebot.FlexComponentTypeBox,
+		Layout:   linebot.FlexBoxLayoutTypeVertical,
+		Contents: rootFlexBodyComponent,
+	}
+	flexContainerTemplate := &linebot.BubbleContainer{
+		Type:   linebot.FlexContainerTypeBubble,
+		Header: headerBox,
+		Body:   bodyBox,
+	}
+	template := linebot.NewFlexMessage("การแจ้งเตือนพัสดุ", flexContainerTemplate)
+	return template
+}
+
+func buildChildBox(title string, value string) linebot.FlexComponent {
+	childFlexBodyContentComponent := []linebot.FlexComponent{}
+	childFlexBodyContentComponent = append(childFlexBodyContentComponent, &linebot.TextComponent{Type: linebot.FlexComponentTypeText, Text: title, Align: linebot.FlexComponentAlignTypeStart})
+	childFlexBodyContentComponent = append(childFlexBodyContentComponent, &linebot.TextComponent{Type: linebot.FlexComponentTypeText, Text: value, Align: linebot.FlexComponentAlignTypeEnd})
+
+	childFlexBodyComponent := &linebot.BoxComponent{
+		Type:     linebot.FlexComponentTypeBox,
+		Layout:   linebot.FlexBoxLayoutTypeHorizontal,
+		Spacing:  linebot.FlexComponentSpacingTypeMd,
+		Contents: childFlexBodyContentComponent,
+	}
+	return childFlexBodyComponent
+}
+
 func findNewRegisterMailService(cachedResultRegisterMail BaseResultRegisterMail, currentResultRegisterMail BaseResultRegisterMail) []ResultRegisterMail {
 	var filteredMailResult = []ResultRegisterMail{}
-	for _, registerMail := range currentResultRegisterMail.Received {
-		for _, cacheRegisterMail := range cachedResultRegisterMail.Received {
+	isCached := false
+	for _, registerMail := range currentResultRegisterMail.NotReceived {
+		for _, cacheRegisterMail := range cachedResultRegisterMail.NotReceived {
 			if registerMail.ParcelNumber == cacheRegisterMail.ParcelNumber {
-				continue
+				isCached = true
+				break
 			}
 		}
-		filteredMailResult = append(filteredMailResult, registerMail)
+		if !isCached {
+			filteredMailResult = append(filteredMailResult, registerMail)
+		}
+		isCached = false
 	}
 	return filteredMailResult
 }
 
-func sendMessageToLine(resultRegisterMail []ResultRegisterMail) {
+func setDataSendToLine(botClient *linebot.Client, request *http.Request) string {
+	events, err := botClient.ParseRequest(request)
+	if err != nil {
+		log.Fatal(err)
+		fmt.Println(err.Error())
+	}
+	return events[0].Source.UserID
+}
 
+func sendMessageToLine(resultRegisterMail []ResultRegisterMail, botClient *linebot.Client, userID string) {
+	for _, mailResult := range resultRegisterMail {
+		_, err := botClient.PushMessage(userID, buildFlexMessage(mailResult)).Do()
+		if err != nil {
+			log.Fatal(err)
+			fmt.Println(err.Error())
+		}
+	}
 }
 
 func readAppConfig() config.Config {

@@ -36,3 +36,7 @@
 [[constraint]]
   name = "github.com/spf13/viper"
   version = "1.2.1"
+
+[[constraint]]
+  name = "github.com/line/line-bot-sdk-go"
+  version = "4.0.0"
