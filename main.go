@@ -44,31 +44,45 @@ type ResultRegisterMail struct {
 	ProjectID    string
 }
 
+var userID string
+
 func main() {
+	go startChecker()
 	app := iris.Default()
 	app.Post("/webhook", func(ctx iris.Context) {
-		applicationRunner(ctx.Request())
+		request := ctx.Request()
+		initApplication(request)
+		ctx.JSON(iris.StatusOK)
 	})
 	app.Run(iris.Addr(":8080"))
 }
 
-func applicationRunner(request *http.Request) {
-	var cachedRegisterMailAPI *BaseResultRegisterMail
+func initApplication(request *http.Request) {
 	config := readAppConfig()
 	bot, err := linebot.New(config.LineChannelSecret, config.LineAccessToken)
-	userID := setDataSendToLine(bot, request)
+	if err != nil {
+		fmt.Println(1)
+		log.Fatal(err)
+		fmt.Println(err.Error())
+	}
+	sendHelloToLine(bot, request)
+}
+
+func startChecker() {
+	var cachedRegisterMailAPI BaseResultRegisterMail
+	config := readAppConfig()
+	bot, err := linebot.New(config.LineChannelSecret, config.LineAccessToken)
 	if err != nil {
 		log.Fatal(err)
 		fmt.Println(err.Error())
 	}
-	for range time.Tick(3600 * time.Second) {
-		registerMailResult := getDataFromCheckRegisterMailAPI(config)
-		if cachedRegisterMailAPI == nil {
-			cachedRegisterMailAPI = &registerMailResult
-		} else {
-			filteredMailResult := findNewRegisterMailService(*cachedRegisterMailAPI, registerMailResult)
-			sendMessageToLine(filteredMailResult, bot, userID)
-			cachedRegisterMailAPI = &registerMailResult
+
+	for range time.Tick(2 * time.Second) {
+		if userID != "" {
+			registerMailResult := getDataFromCheckRegisterMailAPI(config)
+			filteredMailResult := findNewRegisterMailService(cachedRegisterMailAPI, registerMailResult)
+			sendMessageToLine(filteredMailResult, bot)
+			cachedRegisterMailAPI = registerMailResult
 		}
 	}
 }
@@ -95,7 +109,7 @@ func buildFlexMessage(registerMailObject ResultRegisterMail) *linebot.FlexMessag
 	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("Tracking No.", registerMailObject.TrackNo))
 	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("ผู้ส่ง", registerMailObject.Sender))
 	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("ผู้รับพัสดุ", registerMailObject.Recipient))
-	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("วันที่รับพัสดุเข้า", registerMailObject.ReceivedDate))
+	rootFlexBodyComponent = append(rootFlexBodyComponent, buildChildBox("วันที่รับพัสดุเข้า", registerMailObject.CreateDate))
 
 	headerBox := &linebot.BoxComponent{
 		Type:     linebot.FlexComponentTypeBox,
@@ -148,16 +162,28 @@ func findNewRegisterMailService(cachedResultRegisterMail BaseResultRegisterMail,
 	return filteredMailResult
 }
 
-func setDataSendToLine(botClient *linebot.Client, request *http.Request) string {
+func sendHelloToLine(botClient *linebot.Client, request *http.Request) {
+	messages := linebot.NewTextMessage("ยินดีต้อนรับจ้า ระบบเริ่มทำงานแล้ว!")
+
 	events, err := botClient.ParseRequest(request)
 	if err != nil {
 		log.Fatal(err)
 		fmt.Println(err.Error())
 	}
-	return events[0].Source.UserID
+	for _, event := range events {
+		if event.Type == linebot.EventTypeMessage {
+			replyToken := event.ReplyToken
+			userID = event.Source.UserID
+			_, err := botClient.ReplyMessage(replyToken, messages).Do()
+			if err != nil {
+				log.Fatal(err)
+				fmt.Println(err.Error())
+			}
+		}
+	}
 }
 
-func sendMessageToLine(resultRegisterMail []ResultRegisterMail, botClient *linebot.Client, userID string) {
+func sendMessageToLine(resultRegisterMail []ResultRegisterMail, botClient *linebot.Client) {
 	for _, mailResult := range resultRegisterMail {
 		_, err := botClient.PushMessage(userID, buildFlexMessage(mailResult)).Do()
 		if err != nil {
