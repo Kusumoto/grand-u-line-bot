@@ -1,6 +1,7 @@
 # grand-u-line-bot
 Check the register mail & check balance and send to line bot for Grand Unity condominium  
 
+(https://github.com/Kusumoto/grand-u-line-bot/raw/master/ss.png)
 
 ## How to use
 - Write the configuration file (config.json)
